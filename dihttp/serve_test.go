@@ -218,3 +218,30 @@ func TestServeKeepsTheHostOfAddr(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A Stop whose context has already expired still stops the server.
+func TestServeImpatientStopStillStops(t *testing.T) {
+	app := di.New()
+	dihttp.Serve(app.Wire[*http.Server](func() *http.Server {
+		return &http.Server{Addr: "127.0.0.1:0", Handler: http.HandlerFunc(hello)}
+	}))
+	if err := app.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	addr := app.Get[*http.Server]().Addr
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_ = app.Stop(ctx)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		c, err := net.Dial("tcp", addr)
+		if err != nil {
+			return
+		}
+		_ = c.Close()
+		if time.Now().After(deadline) {
+			t.Fatal("the server is still accepting")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}

@@ -43,10 +43,22 @@ one:
 app.Validate(di.Provided[*digrpc.Call]()).Err()
 ```
 
-Graceful shutdown is yours to write, and it is one hook — `OnDrain` calling
-`srv.GracefulStop()`, which runs before anything is torn down, so the calls
-still in flight still have their scopes. `examples/grpc` in the main
-repository is that program end to end.
+`Serve` gives the server its lifecycle, on whatever listener you return:
+
+```go
+var lc net.ListenConfig
+digrpc.Serve(app.Wire[*grpc.Server](NewServer), func(ctx context.Context) (net.Listener, error) {
+	return lc.Listen(ctx, "tcp", ":50051")
+})
+```
+
+It makes the binding eager and takes every hook: `OnStart` calls `listen`, so
+a busy port fails the start; a worker serves once the whole start has
+succeeded (`di.Scope.Ready`), so a start that rolls back serves no call;
+`OnDrain` calls `GracefulStop`, which runs before anything is torn down, so
+calls still in flight keep their scopes; `OnStop` calls `Stop`. A `bufconn`
+listener works the same, which is how its tests run. `examples/grpc` in the
+main repository is that program end to end.
 
 Versioned on its own as `digrpc/vX.Y.Z`, against a released `di`; bumping that
 requirement is how it picks up a library change. Its tests serve grpc's own

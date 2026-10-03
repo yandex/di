@@ -133,6 +133,9 @@ func Serve(b di.Binding[*http.Server]) di.Binding[*http.Server] {
 			case <-ctx.Done():
 				return nil // the start failed and rolled back
 			}
+			// The drain shuts the server down before the worker is cancelled;
+			// this closes it when a missed deadline skipped the drain.
+			defer context.AfterFunc(ctx, func() { _ = srv.Close() })()
 			var err error
 			if srv.TLSConfig != nil {
 				err = srv.ServeTLS(ln, "", "")

@@ -482,7 +482,9 @@ and the incoming context, and `Module` provides it. `digrpc.Register[*Users](srv
 serves a generated service with an implementation resolved from that scope,
 so the implementation is a service like a handler type under `dihttp.Handle`:
 `Scoped()` when it takes the call, built after the interceptors have run, and
-a constructor's status error is the call's. `GracefulStop` is the drain hook.
+a constructor's status error is the call's. `digrpc.Serve(b, listen)` runs
+the server as `dihttp.Serve` does, on the listener `listen` returns, with
+`GracefulStop` as the drain hook.
 
 <details>
 <summary><code>examples/grpc/main.go</code>, a gRPC server with a service built per call from the call's metadata</summary>
@@ -494,17 +496,18 @@ a constructor's status error is the call's. `GracefulStop` is the drain hook.
 // The digrpc interceptor opens a scope for every call and registers the
 // *digrpc.Call in it, and digrpc.Register serves the health service with an
 // implementation resolved from that scope, so a Scoped Health is built per
-// call with a Caller read from the call's metadata. Run starts the scope, waits for SIGINT/SIGTERM or a
-// Shutdown call, then stops everything in reverse order with a bounded
-// context. The server's OnDrain calls GracefulStop, which stops accepting
-// calls and waits for in-flight ones. Draining runs before anything is torn
-// down, so those calls still have their scopes.
+// call with a Caller read from the call's metadata. digrpc.Serve gives the
+// server its lifecycle: it binds in OnStart, serves once the whole start has
+// succeeded, and drains with GracefulStop, which stops accepting calls and
+// waits for in-flight ones. Run starts the scope, waits for SIGINT/SIGTERM or
+// a Shutdown call, then stops everything in reverse order with a bounded
+// context. Draining runs before anything is torn down, so those calls still
+// have their scopes.
 package main
 
 import (
 	"cmp"
 	"context"
-	"errors"
 	"log"
 	"net"
 	"strings"
@@ -561,47 +564,15 @@ func main() {
 	app.Wire[*Caller](NewCaller).Scoped()
 	app.Wire[*Health](NewHealth).Scoped()
 
-	var ln net.Listener
-	app.Wire[*grpc.Server](NewServer).
-		Eager().
-		OnStart(func(ctx context.Context, srv *grpc.Server) (err error) {
-			// Bind synchronously so a busy port fails Start.
-			ln, err = net.Listen("tcp", ":50051")
-			if err == nil {
-				log.Println("listening on", ln.Addr())
-			}
-			return err
-		}).
-		// Serve once the whole application has started; a failed start rolls
-		// back without a call served. An error here stops the application.
-		Go(func(ctx context.Context, srv *grpc.Server) error {
-			select {
-			case <-app.Ready():
-			case <-ctx.Done():
-				_ = ln.Close() // the start failed and rolled back
-				return nil
-			}
-			// Serve returns nil after GracefulStop or Stop, and ErrServerStopped
-			// when the drain stopped the server before it got here.
-			if err := srv.Serve(ln); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
-				return err
-			}
-			return nil
-		}).
-		// OnDrain runs before anything is stopped, so calls that are still
-		// running keep their scopes and dependencies.
-		OnDrain(func(ctx context.Context, srv *grpc.Server) error {
-			log.Println("draining")
-			// GracefulStop takes no context: if the stop context expires first,
-			// Stop cuts the remaining calls short.
-			stop := context.AfterFunc(ctx, srv.Stop)
-			srv.GracefulStop()
-			if !stop() {
-				return ctx.Err()
-			}
-			return nil
-		}).
-		OnStop(func(ctx context.Context, srv *grpc.Server) error { srv.Stop(); return nil })
+	// Binds :50051 in OnStart, so a busy port fails Start; serves after Ready.
+	var lc net.ListenConfig
+	digrpc.Serve(app.Wire[*grpc.Server](NewServer), func(ctx context.Context) (net.Listener, error) {
+		ln, err := lc.Listen(ctx, "tcp", ":50051")
+		if err == nil {
+			log.Println("listening on", ln.Addr())
+		}
+		return ln, err
+	})
 
 	// The graph is checked as a call scope would resolve it: the interceptor
 	// is provided by the module, the call by each call.
