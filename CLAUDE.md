@@ -653,6 +653,14 @@ reverse: caught by the fuzzer in 0.06s, missed by 400 seeded sequences).
   constructor's status is taken from inside the build error with
   `errors.AsType` so the client never sees the registration site. That rests
   on `grpc.MethodHandler` being the public contract it is documented as.
+- **`digrpc.Serve` is `dihttp.Serve` for grpc**, with the listener from a
+  `listen func(ctx)` since a `*grpc.Server` has no address; its tests serve
+  over `bufconn`, whose dial waits for an `Accept`, so an unserved call times
+  out rather than queueing. The two are one pattern, so a fix to either is
+  owed to the other. Each worker stops its server when cancelled: the drain
+  does that first on every path a test can reach, but an instance built into
+  a scope whose drain phase already ended is cancelled undrained, and `Serve`
+  ignores its context.
 - **`dihttp.Serve` takes every hook of the binding it is given**, so a user
   adds none; it reaches `Ready` through `Binding.Scope`. The listener passes
   from `OnStart` to the worker in a captured variable, which is sound because

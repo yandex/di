@@ -7,6 +7,21 @@ below says plainly whether an upgrade can break a caller.
 
 ## [Unreleased]
 
+### Added
+
+- `digrpc.Serve(b, listen)` gives a `*grpc.Server` binding its whole
+  lifecycle, as `dihttp.Serve` does for net/http: eager, `listen` called in
+  `OnStart`, served from a worker once `Ready` closes, `GracefulStop` in
+  `OnDrain` bounded by the stop context, `Stop` in `OnStop`.
+  `examples/grpc` uses it. In `digrpc/v0.3.0`, which requires `di` v0.19.0.
+
+### Fixed
+
+- `dihttp.Serve`'s worker closes the server when it is cancelled, so a
+  teardown that skipped the drain (an instance built into a scope whose
+  drain phase had already ended) no longer leaves it serving with `OnStop`
+  waiting on the worker for ever.
+
 ## [0.19.0] - 2026-10-03
 
 A barrier for serving once the whole start has succeeded, and the net/http

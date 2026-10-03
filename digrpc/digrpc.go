@@ -6,7 +6,8 @@
 // with an implementation resolved from that scope, so the implementation is
 // such a service too; one registered the plain way reaches the scope through
 // [di.FromContext] on the context it is given. [Module] registers the
-// interceptor as a service; [New] makes one directly.
+// interceptor as a service; [New] makes one directly. [Serve] runs a
+// *grpc.Server the container builds for as long as its scope.
 //
 // It is a separate module, so the library itself does not depend on grpc:
 //
