@@ -7,6 +7,13 @@ below says plainly whether an upgrade can break a caller.
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-03
+
+A barrier for serving once the whole start has succeeded, and the net/http
+adapter's use of it. `go doc -all` against 0.18.0 only adds: `Scope.Ready`
+and `Binding.Scope` in `di`, `Serve` in `dihttp`; `dislog` is unchanged. An
+upgrade cannot break a caller.
+
 ### Added
 
 - `Scope.Ready` returns a channel closed once the nearest `Start` at or
@@ -1239,7 +1246,8 @@ rollback and deterministic stop order, `Run` hooks for workers, health
 checks, `Run` and `Shutdown` for graceful termination, and observability
 events.
 
-[Unreleased]: https://github.com/yandex/di/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/yandex/di/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/yandex/di/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/yandex/di/compare/v0.17.2...v0.18.0
 [0.17.2]: https://github.com/yandex/di/compare/v0.17.1...v0.17.2
 [0.17.1]: https://github.com/yandex/di/compare/v0.17.0...v0.17.1
