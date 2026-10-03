@@ -14,7 +14,14 @@ below says plainly whether an upgrade can break a caller.
   A worker starts with its own service, while later services may still be
   starting; a server that binds in `OnStart` and serves from its worker
   after `Ready` serves no request from a start that then rolls back.
-  `examples/server`, `examples/grpc` and the guide's API server do so.
+  `examples/server` and `examples/grpc` do so.
+- `dihttp.Serve(b)` gives an `*http.Server` binding its whole lifecycle: it
+  makes it eager, binds in `OnStart`, serves from a worker once `Ready`
+  closes (with `ServeTLS` when the server has a `TLSConfig`), shuts down in
+  `OnDrain` and closes in `OnStop`, and fills in a port of 0 in `Addr`.
+  The guide's API server uses it.
+- `Binding.Scope` returns the scope a binding was registered through, for
+  code that adds hooks needing it, as `dihttp.Serve` does.
 
 ## [0.18.0] - 2026-09-24
 

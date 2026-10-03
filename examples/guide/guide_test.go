@@ -84,7 +84,8 @@ func TestModulesMatchTheGuide(t *testing.T) {
 }
 
 // Start builds the eager services and runs their hooks against a random
-// port; Stop cancels the worker, drains the server and closes the database.
+// port, which the server then answers on; Stop cancels the workers, drains
+// the server and closes the database.
 func TestStartAndStop(t *testing.T) {
 	t.Setenv("ADDR", "127.0.0.1:0")
 	app := di.New()
@@ -92,6 +93,14 @@ func TestStartAndStop(t *testing.T) {
 	ctx := t.Context()
 	if err := app.Start(ctx); err != nil {
 		t.Fatal(err)
+	}
+	resp, err := http.Get("http://" + app.Get[*http.Server]().Addr + "/healthz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("GET /healthz: %s", resp.Status)
 	}
 	if err := app.Stop(ctx); err != nil {
 		t.Fatal(err)

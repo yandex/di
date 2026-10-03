@@ -206,9 +206,11 @@ export const en: Content = {
 					<p>
 						The middleware needs the scope itself, to open a child per request, so{' '}
 						<C>dihttp.Module</C> registers it as a service and the server takes it as a
-						parameter like anything else. <C>OnDrain</C> runs before anything is stopped, so
-						requests in flight keep their scopes while <C>http.Server.Shutdown</C> waits for
-						them.
+						parameter like anything else. <C>dihttp.Serve</C> gives the server its lifecycle:
+						it binds in <C>OnStart</C>, so a busy port fails the start, serves once the whole
+						start has succeeded, and drains in <C>OnDrain</C>, which runs before anything is
+						stopped, so requests in flight keep their scopes while{' '}
+						<C>http.Server.Shutdown</C> waits for them.
 					</p>
 					{f.api}
 				</>
