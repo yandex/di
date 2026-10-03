@@ -7,6 +7,15 @@ below says plainly whether an upgrade can break a caller.
 
 ## [Unreleased]
 
+### Added
+
+- `Scope.Ready` returns a channel closed once the nearest `Start` at or
+  above the scope (or `Run`'s start) returns nil, and never when it fails.
+  A worker starts with its own service, while later services may still be
+  starting; a server that binds in `OnStart` and serves from its worker
+  after `Ready` serves no request from a start that then rolls back.
+  `examples/server`, `examples/grpc` and the guide's API server do so.
+
 ## [0.18.0] - 2026-09-24
 
 Three races that could leave a key two live values are closed, and a warm

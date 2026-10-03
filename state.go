@@ -39,12 +39,13 @@ type state struct {
 	// by emit.
 	observers atomic.Pointer[[]func(Event)]
 
-	// startCtx is set once, by Start, and running once Start reaches its
-	// hook phase, after which a service built later starts itself. Atomic
-	// because every build reads them up the whole chain; what makes a late
-	// build start exactly once is their order against publish, not a mutex.
-	startCtx atomic.Pointer[context.Context]
-	running  atomic.Bool
+	// start is made by Start, or by Ready on the root before any Start, and
+	// running is set once Start reaches its hook phase, after which a service
+	// built later starts itself. Atomic because every build reads them up the
+	// whole chain; what makes a late build start exactly once is their order
+	// against publish, not a mutex.
+	start   atomic.Pointer[startRec]
+	running atomic.Bool
 
 	stopped  atomic.Bool     // set by the seal that ends Stop's drain; resolution then fails with ErrStopped
 	stopCtx  context.Context // the context Stop was called with
@@ -246,13 +247,31 @@ func (st *state) isStopped() bool {
 	return false
 }
 
+// startRec is one scope's Start: the context it was called with, stored
+// once, and ready, closed when it returns nil.
+type startRec struct {
+	ctx   atomic.Pointer[context.Context]
+	ready chan struct{}
+}
+
+// startRecord returns this scope's startRec, making it if need be.
+func (st *state) startRecord() *startRec {
+	if r := st.start.Load(); r != nil {
+		return r
+	}
+	st.start.CompareAndSwap(nil, &startRec{ready: make(chan struct{})})
+	return st.start.Load()
+}
+
 // runContext walks up to the nearest state Start was called on. running
 // reports whether that Start has passed its hook phase; it is never true with
 // a nil ctx, since start records the context before setting the flag.
 func (st *state) runContext() (ctx context.Context, running bool) {
 	for ; st != nil; st = st.parent {
-		if p := st.startCtx.Load(); p != nil {
-			return *p, st.running.Load()
+		if r := st.start.Load(); r != nil {
+			if p := r.ctx.Load(); p != nil {
+				return *p, st.running.Load()
+			}
 		}
 	}
 	return nil, false

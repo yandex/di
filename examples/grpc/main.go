@@ -70,22 +70,31 @@ func main() {
 	app.Wire[*Caller](NewCaller).Scoped()
 	app.Wire[*Health](NewHealth).Scoped()
 
+	var ln net.Listener
 	app.Wire[*grpc.Server](NewServer).
 		Eager().
-		OnStart(func(ctx context.Context, srv *grpc.Server) error {
-			// Bind synchronously so a busy port fails Start; serve in the background.
-			ln, err := net.Listen("tcp", ":50051")
-			if err != nil {
+		OnStart(func(ctx context.Context, srv *grpc.Server) (err error) {
+			// Bind synchronously so a busy port fails Start.
+			ln, err = net.Listen("tcp", ":50051")
+			if err == nil {
+				log.Println("listening on", ln.Addr())
+			}
+			return err
+		}).
+		// Serve once the whole application has started; a failed start rolls
+		// back without a call served. An error here stops the application.
+		Go(func(ctx context.Context, srv *grpc.Server) error {
+			select {
+			case <-app.Ready():
+			case <-ctx.Done():
+				_ = ln.Close() // the start failed and rolled back
+				return nil
+			}
+			// Serve returns nil after GracefulStop or Stop, and ErrServerStopped
+			// when the drain stopped the server before it got here.
+			if err := srv.Serve(ln); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 				return err
 			}
-			log.Println("listening on", ln.Addr())
-			go func() {
-				// Serve returns nil after GracefulStop or Stop, and ErrServerStopped
-				// when a rollback stopped the server before it got here.
-				if err := srv.Serve(ln); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
-					app.Shutdown(err) // the listener died: stop the whole application
-				}
-			}()
 			return nil
 		}).
 		// OnDrain runs before anything is stopped, so calls that are still
