@@ -34,20 +34,29 @@ func main() {
 		})
 	})
 
+	var ln net.Listener
 	app.Wire[*http.Server](func(h http.Handler) *http.Server { return &http.Server{Addr: ":8080", Handler: h} }).
 		Eager().
-		OnStart(func(ctx context.Context, srv *http.Server) error {
-			// Bind synchronously so a busy port fails Start; serve in the background.
-			ln, err := net.Listen("tcp", srv.Addr)
-			if err != nil {
+		OnStart(func(ctx context.Context, srv *http.Server) (err error) {
+			// Bind synchronously so a busy port fails Start.
+			ln, err = net.Listen("tcp", srv.Addr)
+			if err == nil {
+				log.Println("listening on", ln.Addr())
+			}
+			return err
+		}).
+		// Serve once the whole application has started; a failed start rolls
+		// back without a request served. An error here stops the application.
+		Go(func(ctx context.Context, srv *http.Server) error {
+			select {
+			case <-app.Ready():
+			case <-ctx.Done():
+				_ = ln.Close() // the start failed and rolled back
+				return nil
+			}
+			if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
 				return err
 			}
-			log.Println("listening on", ln.Addr())
-			go func() {
-				if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
-					app.Shutdown(err) // the listener died: stop the whole application
-				}
-			}()
 			return nil
 		}).
 		// OnDrain runs before anything is stopped, so handlers that are

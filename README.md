@@ -273,6 +273,13 @@ The context is cancelled when the service stops, and `Stop` waits for the
 function within its deadline. A worker that returns an error calls
 `Shutdown`; `context.Canceled` after cancellation means nothing.
 
+A worker starts as soon as its own service has, while services after it may
+still be starting. `Ready` is closed once the whole `Start` succeeds and
+never if it fails, so a server binds in `OnStart` and serves from its worker
+only after `Ready`, selecting on its context too: a failed start then rolls
+back without a request served. A scope's `Ready` follows the nearest `Start`
+at or above it, as `Context` does.
+
 #### Run and Shutdown
 
 `Run` is the helper for `main`: start, block until the context is cancelled,
@@ -291,7 +298,7 @@ then, on the scope's context, so a hook that waits on such a service is not
 bounded either — the deadline is checked between the steps `Start` drives.
 
 <details>
-<summary><code>examples/server/main.go</code>, an HTTP server with OnStart, OnDrain and OnStop, run with a stop timeout</summary>
+<summary><code>examples/server/main.go</code>, an HTTP server with OnStart, Go, OnDrain and OnStop, run with a stop timeout</summary>
 
 [embedmd]:# (examples/server/main.go go)
 ```go
@@ -331,20 +338,29 @@ func main() {
 		})
 	})
 
+	var ln net.Listener
 	app.Wire[*http.Server](func(h http.Handler) *http.Server { return &http.Server{Addr: ":8080", Handler: h} }).
 		Eager().
-		OnStart(func(ctx context.Context, srv *http.Server) error {
-			// Bind synchronously so a busy port fails Start; serve in the background.
-			ln, err := net.Listen("tcp", srv.Addr)
-			if err != nil {
+		OnStart(func(ctx context.Context, srv *http.Server) (err error) {
+			// Bind synchronously so a busy port fails Start.
+			ln, err = net.Listen("tcp", srv.Addr)
+			if err == nil {
+				log.Println("listening on", ln.Addr())
+			}
+			return err
+		}).
+		// Serve once the whole application has started; a failed start rolls
+		// back without a request served. An error here stops the application.
+		Go(func(ctx context.Context, srv *http.Server) error {
+			select {
+			case <-app.Ready():
+			case <-ctx.Done():
+				_ = ln.Close() // the start failed and rolled back
+				return nil
+			}
+			if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
 				return err
 			}
-			log.Println("listening on", ln.Addr())
-			go func() {
-				if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
-					app.Shutdown(err) // the listener died: stop the whole application
-				}
-			}()
 			return nil
 		}).
 		// OnDrain runs before anything is stopped, so handlers that are
@@ -538,22 +554,31 @@ func main() {
 	app.Wire[*Caller](NewCaller).Scoped()
 	app.Wire[*Health](NewHealth).Scoped()
 
+	var ln net.Listener
 	app.Wire[*grpc.Server](NewServer).
 		Eager().
-		OnStart(func(ctx context.Context, srv *grpc.Server) error {
-			// Bind synchronously so a busy port fails Start; serve in the background.
-			ln, err := net.Listen("tcp", ":50051")
-			if err != nil {
+		OnStart(func(ctx context.Context, srv *grpc.Server) (err error) {
+			// Bind synchronously so a busy port fails Start.
+			ln, err = net.Listen("tcp", ":50051")
+			if err == nil {
+				log.Println("listening on", ln.Addr())
+			}
+			return err
+		}).
+		// Serve once the whole application has started; a failed start rolls
+		// back without a call served. An error here stops the application.
+		Go(func(ctx context.Context, srv *grpc.Server) error {
+			select {
+			case <-app.Ready():
+			case <-ctx.Done():
+				_ = ln.Close() // the start failed and rolled back
+				return nil
+			}
+			// Serve returns nil after GracefulStop or Stop, and ErrServerStopped
+			// when the drain stopped the server before it got here.
+			if err := srv.Serve(ln); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 				return err
 			}
-			log.Println("listening on", ln.Addr())
-			go func() {
-				// Serve returns nil after GracefulStop or Stop, and ErrServerStopped
-				// when a rollback stopped the server before it got here.
-				if err := srv.Serve(ln); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
-					app.Shutdown(err) // the listener died: stop the whole application
-				}
-			}()
 			return nil
 		}).
 		// OnDrain runs before anything is stopped, so calls that are still

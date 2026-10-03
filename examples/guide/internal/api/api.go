@@ -84,25 +84,31 @@ func newServer(cfg config.Config, mw dihttp.Middleware) *http.Server {
 }
 
 // Module registers the request-scoped values, the handlers and the server,
-// with the hooks that bind, drain and close it.
+// with the hooks that bind, serve, drain and close it.
 func Module(s *di.Scope) {
 	s.Wire[*caller](newCaller).Scoped()
 	s.Wire[*users](newUsers).Scoped()
 	s.Wire[*health](newHealth)
+	var ln net.Listener
 	s.Wire[*http.Server](newServer).
 		Eager().
-		OnStart(func(_ context.Context, srv *http.Server) error {
-			// Bind synchronously, so a busy port fails Start; serve in the
-			// background, and take the application down if serving stops.
-			ln, err := net.Listen("tcp", srv.Addr)
-			if err != nil {
+		// Bind synchronously, so a busy port fails Start.
+		OnStart(func(_ context.Context, srv *http.Server) (err error) {
+			ln, err = net.Listen("tcp", srv.Addr)
+			return err
+		}).
+		// Serve once the whole application has started, so a failed start
+		// rolls back without a request served; an error here stops it.
+		Go(func(ctx context.Context, srv *http.Server) error {
+			select {
+			case <-s.Ready():
+			case <-ctx.Done():
+				_ = ln.Close() // the start failed and rolled back
+				return nil
+			}
+			if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
 				return err
 			}
-			go func() {
-				if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
-					s.Shutdown(err)
-				}
-			}()
 			return nil
 		}).
 		// Draining runs before anything is stopped, so requests still in

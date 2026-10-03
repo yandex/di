@@ -25,6 +25,13 @@ package di_test
 //	    never deadlocking against the phase machine they read.
 //	I8  Validate builds nothing and is repeatable: two calls from one scope
 //	    say the same thing, and the build count is what it was before.
+//	I9  Ready is the channel of the nearest scope at or above Start was
+//	    called on, or the root's, and is closed exactly when that Start
+//	    returned nil. A channel keeps the scope it was asked against. A
+//	    failed Run joins its start's error with its stop's, so it leaves
+//	    that start unknown and the check skips what it decides; a rejected
+//	    Start or Run may have recorded its context or not, so it leaves
+//	    the owner unknown until a later call says which.
 //
 // What happens to an instance once it exists is predicted by the model in
 // lifecyclemodel_test.go. Recovering a key whose resolution failed needs a
@@ -140,7 +147,9 @@ type machine struct {
 	ops     []op
 	scopes  []*di.Scope
 	names   []string
-	stopped []bool // scope index -> Stop has been called
+	stopped []bool         // scope index -> Stop has been called
+	started []startOutcome // scope index -> what its own Start did
+	asked   []askedReady   // scope index -> the first Ready asked of it
 
 	// observed lifecycle, keyed by "scope/service"
 	builds map[string]int
@@ -174,6 +183,8 @@ func newMachine(t *testing.T, ops []op) *machine {
 		seen: map[string]any{}, failedResolve: map[string]bool{},
 		registeredFrom: map[int]bool{},
 		stopped:        make([]bool, numScopes),
+		started:        make([]startOutcome, numScopes),
+		asked:          make([]askedReady, numScopes),
 	}
 	root := di.New()
 	root.Observe(func(ev di.Event) {
@@ -263,10 +274,12 @@ func (m *machine) call(what string, f func() (any, error)) outcome {
 }
 
 func (m *machine) run() {
+	m.checkReady("before the sequence") // so a channel is asked before any Start
 	for i, o := range m.ops {
 		m.step(i, o)
 	}
 	m.render()
+	m.checkReady("end of sequence")
 	m.finish()
 }
 
@@ -411,6 +424,8 @@ func (m *machine) step(i int, o op) {
 		if out.rejected == "" {
 			m.lc.started(int(o.scope), out.err)
 		}
+		m.startDid(o.scope, out)
+		m.checkReady(label)
 
 	case opStop:
 		out := m.call(label, func() (any, error) {
@@ -439,6 +454,11 @@ func (m *machine) step(i int, o op) {
 				m.markStopped(int(o.scope))
 			}
 		}
+		if out.err != nil && out.rejected == "" && !strings.Contains(out.err.Error(), "Start called twice") {
+			out.err = errRunFailed // its start may have succeeded
+		}
+		m.startDid(o.scope, out)
+		m.checkReady(label)
 
 	case opShutdown:
 		// Sequentially this only records a cause; it is here so the operation
@@ -516,6 +536,82 @@ func (m *machine) markStopped(i int) {
 			if a == i {
 				m.stopped[j] = true
 				break
+			}
+		}
+	}
+}
+
+// startOutcome is what a scope's own Start did, as I9 needs it.
+type startOutcome int8
+
+const (
+	startNotCalled startOutcome = iota
+	startSucceeded
+	startFailed
+	startUnknown   // a Run whose error may be its stop's
+	startAmbiguous // rejected, before or after recording its context
+)
+
+// errRunFailed stands in for a failed Run's error in startDid.
+var errRunFailed = errors.New("run failed")
+
+// startDid records what a Start or Run on scope i did, for I9.
+func (m *machine) startDid(i uint8, out outcome) {
+	twice := out.err != nil && strings.Contains(out.err.Error(), "Start called twice")
+	switch {
+	case out.rejected != "":
+		if m.started[i] == startNotCalled {
+			m.started[i] = startAmbiguous
+		}
+	case twice:
+		if m.started[i] == startAmbiguous {
+			m.started[i] = startFailed // the rejected call recorded its context
+		}
+	case out.err == nil:
+		m.started[i] = startSucceeded
+	case errors.Is(out.err, errRunFailed):
+		m.started[i] = startUnknown
+	default:
+		m.started[i] = startFailed
+	}
+}
+
+// askedReady is a channel Ready returned and the scope it belongs to.
+type askedReady struct {
+	ch    <-chan struct{}
+	owner int
+}
+
+// readyOwner is the scope whose Start decides Ready on scope i, or -1 when a
+// rejected call leaves that unknown.
+func (m *machine) readyOwner(i int) int {
+	for a := i; a >= 0; a = parentOf[a] {
+		switch m.started[a] {
+		case startNotCalled:
+			continue
+		case startAmbiguous:
+			return -1
+		}
+		return a
+	}
+	return 0
+}
+
+// checkReady enforces I9 on every scope, through a fresh Ready and through
+// the first channel asked of it.
+func (m *machine) checkReady(label string) {
+	for i, s := range m.scopes {
+		fresh := askedReady{s.Ready(), m.readyOwner(i)}
+		if m.asked[i].ch == nil {
+			m.asked[i] = fresh
+		}
+		for _, r := range []askedReady{fresh, m.asked[i]} {
+			if r.owner < 0 || m.started[r.owner] == startUnknown {
+				continue
+			}
+			want := m.started[r.owner] == startSucceeded
+			if isClosed(r.ch) != want {
+				m.fail("%s: %s: Ready of %s closed=%v, want %v", label, m.names[i], m.names[r.owner], !want, want)
 			}
 		}
 	}

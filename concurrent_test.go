@@ -30,6 +30,10 @@ package di_test
 //	    before the scope stopped.
 //	C11 A Stop reports the failure of a drain hook of its own scope, whether
 //	    it ran that hook or waited for another Stop that owned the phase.
+//	C12 A Ready seen closed has a Start at or above its scope that returned
+//	    nil, or a Run there, whose error cannot say whether its start did.
+//	    And the other way, on the root: once its Start or Run returned nil,
+//	    the channel Ready gave before anything ran is closed.
 
 import (
 	"context"
@@ -189,6 +193,12 @@ type cmachine struct {
 	impatient sync.Map // scope name -> struct{}
 	// stopReturned records the scopes whose Stop has come back, for C10.
 	stopReturned sync.Map // scope name -> struct{}
+	// readySeen and startedOK are C12's two sides: the scopes a lane saw
+	// Ready closed on, and those where a Start returned nil or Run ran.
+	readySeen sync.Map        // scope name -> struct{}
+	startedOK sync.Map        // scope name -> struct{}
+	rootReady <-chan struct{} // asked before any operation
+	rootUp    atomic.Bool     // a Start or Run of the root returned nil
 
 	// drainFailed records the scopes whose own drain hook returned an error;
 	// stopReports holds what every patient Stop of a scope returned. C11 is
@@ -636,12 +646,18 @@ func (m *cmachine) step(i int, o op) {
 	// phase machine while other lanes are writing it, under -race, and
 	// meets instances mid-build or mid-start.
 	defer m.render(label, s)
+	defer m.ready(o.scope, s)
 	m.call(label, func() {
 		switch o.kind {
 		case opRegister:
 			m.register(s, o)
 		case opStart:
-			_ = s.Start(m.t.Context())
+			if s.Start(m.t.Context()) == nil {
+				m.startedOK.Store(m.names[o.scope], struct{}{})
+				if o.scope == 0 {
+					m.rootUp.Store(true)
+				}
+			}
 		case opStop:
 			// An impatient Stop cannot finish the hooks it starts, which is
 			// how the driver reaches the release that outlives its caller.
@@ -687,12 +703,29 @@ func (m *cmachine) step(i int, o op) {
 			// scope and stops it again.
 			ctx, cancel := context.WithCancel(m.t.Context())
 			cancel()
-			_ = s.Run(ctx, di.StopTimeout(5*time.Second))
+			// A failed Run joins its start's error with its stop's, so it
+			// counts for C12 as possibly started; Start shares its start path
+			// and is what holds that path to the oracle.
+			err := s.Run(ctx, di.StopTimeout(5*time.Second))
+			if err == nil || !strings.Contains(err.Error(), "Start called twice") {
+				m.startedOK.Store(m.names[o.scope], struct{}{})
+			}
+			if err == nil && o.scope == 0 {
+				m.rootUp.Store(true)
+			}
 			m.stopReturned.Store(m.names[o.scope], struct{}{})
 		default:
 			m.resolve(s, o)
 		}
 	})
+}
+
+// ready records a Ready seen closed, for C12, while other lanes start, stop
+// and open scopes.
+func (m *cmachine) ready(scope uint8, s *di.Scope) {
+	if isClosed(s.Ready()) {
+		m.readySeen.Store(m.names[scope], struct{}{})
+	}
 }
 
 // render reads the graph while the rest of the lanes are changing it. A
@@ -723,6 +756,7 @@ func (m *cmachine) render(label string, s *di.Scope) {
 // holding nothing tears down an empty scope; the interesting orderings exist
 // once the resolutions have run.
 func (m *cmachine) run() {
+	m.rootReady = m.scopes[0].Ready()
 	var wired, warm, up, down []op
 	for _, o := range m.ops {
 		switch o.kind {
@@ -840,6 +874,18 @@ func (m *cmachine) parallel(ops []op) {
 }
 
 func (m *cmachine) check() {
+	m.readySeen.Range(func(k, _ any) bool { // C12
+		for sc := k.(string); sc != ""; sc = m.order.parent[sc] {
+			if _, ok := m.startedOK.Load(sc); ok {
+				return true
+			}
+		}
+		m.fail("Ready was closed on %s with no Start above it having returned nil", k)
+		return true
+	})
+	if m.rootUp.Load() && (!isClosed(m.rootReady) || !isClosed(m.scopes[0].Ready())) { // C12
+		m.fail("the root started, and Ready on it is still open")
+	}
 
 	for _, msg := range m.order.failures() { // C3
 		m.fail("%s", msg)

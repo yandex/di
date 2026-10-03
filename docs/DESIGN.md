@@ -352,6 +352,16 @@ as part of the start step, its context is cancelled by `Stop`, and `Stop`
 waits for it before `OnStop` runs and before anything it depends on is
 released.
 
+Because a worker starts with its own service, it can run while services
+after it are still starting, and a start that fails later rolls it back after
+it ran. `Ready` is the barrier for a worker that must not act before the whole
+start succeeded. It belongs to the nearest `Start` at or above the scope, the
+same one whose context `Context` returns, so a child started under a running
+root waits for its own start. The channel lives in the record `Start` keeps
+with that context, is closed when `Start` returns nil, and is never closed
+when it fails, so the waiter also selects on its context, which the rollback
+cancels. Asked before any `Start`, `Ready` waits for the root's.
+
 ## Errors and panics
 
 Two kinds of failure, told apart by type:

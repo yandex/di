@@ -109,7 +109,7 @@ the first scope with a recorded route, `instanceFor` does for a `Scoped`
 binding, and `dependOn` the asker's while a constructor builds. `ready`
 summarises `ph`/`err`/`settled` and is recomputed by `refresh` in the same
 critical section as every change to them; it is set exactly when `await`'s
-locked loop would return at once. `startCtx` and `running` are atomics for the
+locked loop would return at once. `start` and `running` are atomics for the
 same reason. `benchmarks/parallel_test.go` is the record of what this bought.
 
 What still takes a shared lock per request is `Child` and the detach at the end
@@ -143,6 +143,17 @@ section, or two branches closing a cycle at once would both decide to wait.
 Lock order is state mutex then `graph.mu`, never the reverse. One graph per
 container, made by `New` and passed through `newState` — a wait crosses scopes,
 never containers.
+
+**`Ready` is a channel on the `Start` it belongs to.** `state.start` points at a
+`startRec`: the context `Start` stores (what `Context()` returns) and `ready`,
+closed when that `Start` returns nil. `Ready` walks up to the nearest record
+with a context, as `runContext` does, so a child started under a running root
+follows its own `Start`, not the root's; where no `Start` has been called it
+returns the root's record, making it, and `Start` on the root then fills in
+that record. Lock-free, and nothing outlives its scope. A channel is fixed when
+asked: one taken before a child's own `Start` keeps waiting on the ancestor it
+was asked against. `state` sits at the top of its size class, which is why the
+channel is in the record rather than beside it.
 
 **The resolution path is immutable, and finished nodes stop counting.**
 `resolver` is a linked-list node, identified by binding *and* holder, never by
@@ -463,7 +474,7 @@ of that predicate, shared by the drain and stop steps.
 - `Start`'s rollback goes through `Stop` with `context.WithoutCancel`, so it
   stops child scopes and waits for workers.
 - `start` takes the scope's context and the start phase's *separately*. The
-  first is stored as `startCtx`: it is what `Context()` returns, what
+  first is stored as `start.ctx`: it is what `Context()` returns, what
   constructors read, and what starts anything built after `Start` returned, so
   it must never carry `StartTimeout`'s deadline. The second bounds only this
   call's eager builds and start hooks; a worker's context is detached from it in
@@ -528,7 +539,10 @@ corpus reached — `optional-miss-then-registered` and
 `needs-a-group-with-members`, since a declared group parameter with anything in
 it needs two registrations and a resolution to line up. `Validate`
 runs at the end of every sequence (I8: builds nothing, repeatable); what it
-*says* is pinned by `validate_test.go`.
+*says* is pinned by `validate_test.go`. I9 checks `Ready` after every `Start`
+and `Run`, through a fresh call and through a channel asked of each scope
+before the sequence, which belongs to the root's record that `Ready` makes and
+`Start` fills in; only that kept channel shows such a waiter never woken.
 
 **`lifecyclemodel_test.go`** — the one place that *does* predict, because what
 happens to an instance once it exists is a small documented state machine. Builds
@@ -538,7 +552,7 @@ predicted, and marked in the file: whether a start step succeeded, and whether
 `Start` was ever called on a scope.
 
 **`concurrent_test.go`** — the same operations in parallel lanes under `-race`,
-in two phases (wire, then everything else), checking the eleven oracles listed at
+in two phases (wire, then everything else), checking the twelve oracles listed at
 the top of the file: only a configuration rejection may panic (C1), every
 operation returns (C2), `Stop` respects scope order (C3), nothing is stopped more
 often than built (C4), one build however many resolutions race (C5), no stop hook
@@ -548,8 +562,10 @@ may legitimately stop the hook's scope mid-hook (C7), one graph gives one cycle
 verdict (C8), every instance owing a stop gets exactly one by quiescence (C9), a
 resolution begun after `Stop` returned fails (C10), and a `Stop` reports its own
 scope's drain-hook failure whether it ran the hook or waited for the `Stop` that
-owned the phase (C11). `settle` defines quiescence by polling until no hook runs
-and nothing owed is unreleased. Driver hooks can panic, so every piece of
+owned the phase (C11), and a `Ready` seen closed has a successful `Start` (or
+a `Run`, which cannot say) at or above it, while once the root has started the
+channel asked of it before anything ran is closed (C12). `settle` defines
+quiescence by polling until no hook runs and nothing owed is unreleased. Driver hooks can panic, so every piece of
 bookkeeping after a hook's first line must be deferred.
 
 **The exemptions these oracles need are the most dangerous part of them.** C3

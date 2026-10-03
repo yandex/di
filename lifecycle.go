@@ -516,7 +516,8 @@ func (s *Scope) Start(ctx context.Context) error {
 func (s *Scope) start(ctx, phase context.Context, rollback func() error) (err error) {
 	defer recoverAbort(&err)
 	s.st.freeze()
-	if !s.st.startCtx.CompareAndSwap(nil, &ctx) {
+	rec := s.st.startRecord()
+	if !rec.ctx.CompareAndSwap(nil, &ctx) {
 		return errors.New("di: Start called twice")
 	}
 	eager := s.st.reg.Load().eager // a registry is never written to; a later freeze stores a new one
@@ -538,6 +539,7 @@ func (s *Scope) start(ctx, phase context.Context, rollback func() error) (err er
 			if s.st.isStopped() {
 				return fmt.Errorf("di: Start: %w", ErrStopped)
 			}
+			close(rec.ready)
 			return nil
 		}
 		if !in.gateStart(owner) {
@@ -618,6 +620,47 @@ func (s *Scope) Context() context.Context {
 		return ctx
 	}
 	return context.Background()
+}
+
+// Ready returns a channel closed once the nearest Start at or above this
+// scope, the one whose context Context returns, has returned nil: the eager
+// services are built and the start steps Start ran have succeeded. It is
+// never closed if that Start fails, so a waiter also selects on its own
+// context, which the rollback cancels. Run's start counts as Start.
+//
+// The channel is fixed when Ready is called. Called where no Start has been
+// called at or above this scope, it is the root's, and stays the root's if
+// this scope is started later; a goroutine racing a Start below may likewise
+// get the channel above it. A worker never does, since the Start that runs
+// its start step has already recorded itself. Closed means that Start
+// returned nil and says nothing about a Stop since. Start closes it only
+// after every constructor and start hook it runs has returned, so none of
+// those may wait on it.
+//
+// A server binds its listener in OnStart, so a busy port fails the start,
+// and serves from its worker only once the whole start has succeeded:
+//
+//	Go(func(ctx context.Context, srv *http.Server) error {
+//		select {
+//		case <-s.Ready():
+//		case <-ctx.Done():
+//			_ = ln.Close() // the start failed and rolled back
+//			return nil
+//		}
+//		if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
+//			return err
+//		}
+//		return nil
+//	})
+func (s *Scope) Ready() <-chan struct{} {
+	for st := s.st; ; st = st.parent {
+		if r := st.start.Load(); r != nil && r.ctx.Load() != nil {
+			return r.ready
+		}
+		if st.parent == nil {
+			return st.startRecord().ready
+		}
+	}
 }
 
 // Stop winds the scope down in three phases. First it drains: OnDrain hooks
