@@ -179,8 +179,10 @@ export const zh: Content = {
 					</p>
 					<p>
 						middleware 自己也需要作用域，才能为每个请求打开子作用域，所以<C>dihttp.Module</C>
-						把它注册为一个服务，服务器像接收其他东西一样通过参数拿到它。<C>OnDrain</C>
-						在任何东西被停止之前运行，所以在<C>http.Server.Shutdown</C>
+						把它注册为一个服务，服务器像接收其他东西一样通过参数拿到它。<C>dihttp.Serve</C>
+						负责服务器的整个生命周期：在<C>OnStart</C>
+						中绑定端口，所以端口被占用会让启动失败；整个启动成功之后才开始处理请求；在<C>OnDrain</C>
+						中排空，它在任何东西被停止之前运行，所以在<C>http.Server.Shutdown</C>
 						等待期间，正在处理中的请求仍然保有它们的作用域。
 					</p>
 					{f.api}

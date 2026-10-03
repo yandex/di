@@ -8,10 +8,7 @@
 package api
 
 import (
-	"context"
-	"errors"
 	"fmt"
-	"net"
 	"net/http"
 
 	"golang.yandex/di"
@@ -84,35 +81,11 @@ func newServer(cfg config.Config, mw dihttp.Middleware) *http.Server {
 }
 
 // Module registers the request-scoped values, the handlers and the server,
-// with the hooks that bind, serve, drain and close it.
+// which dihttp.Serve binds, serves once the application has started, drains
+// and closes.
 func Module(s *di.Scope) {
 	s.Wire[*caller](newCaller).Scoped()
 	s.Wire[*users](newUsers).Scoped()
 	s.Wire[*health](newHealth)
-	var ln net.Listener
-	s.Wire[*http.Server](newServer).
-		Eager().
-		// Bind synchronously, so a busy port fails Start.
-		OnStart(func(_ context.Context, srv *http.Server) (err error) {
-			ln, err = net.Listen("tcp", srv.Addr)
-			return err
-		}).
-		// Serve once the whole application has started, so a failed start
-		// rolls back without a request served; an error here stops it.
-		Go(func(ctx context.Context, srv *http.Server) error {
-			select {
-			case <-s.Ready():
-			case <-ctx.Done():
-				_ = ln.Close() // the start failed and rolled back
-				return nil
-			}
-			if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
-				return err
-			}
-			return nil
-		}).
-		// Draining runs before anything is stopped, so requests still in
-		// flight keep their scopes and everything those depend on.
-		OnDrain(func(ctx context.Context, srv *http.Server) error { return srv.Shutdown(ctx) }).
-		OnStop(func(_ context.Context, srv *http.Server) error { return srv.Close() })
+	dihttp.Serve(s.Wire[*http.Server](newServer))
 }

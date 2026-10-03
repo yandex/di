@@ -6,10 +6,13 @@
 // scope through [di.FromContext], or are made with [Handle], which resolves a
 // handler type from that scope and calls one of its methods. [Module]
 // registers the middleware as a service; [NewMiddleware] makes one directly.
+// [Serve] runs an *http.Server the container builds for as long as its scope.
 package dihttp
 
 import (
 	"context"
+	"errors"
+	"net"
 	"net/http"
 
 	"golang.yandex/di"
@@ -81,4 +84,66 @@ func HandleFunc[H any](method func(H, http.ResponseWriter, *http.Request)) http.
 		}
 		method(req.Get[H](), w, r)
 	}
+}
+
+// Serve runs the server b builds for as long as its scope does. It makes the
+// binding Eager and gives it every lifecycle hook, so add none of your own: a
+// hook added before or after is rejected as a second one, named at the line
+// in this package that added the other.
+//
+//	dihttp.Serve(app.Wire[*http.Server](NewServer))
+//
+// OnStart binds the listener, so a busy port fails Start; when Addr asks for
+// port 0, the port chosen is written back into it. A worker serves once the
+// whole Start has succeeded (see [di.Scope.Ready]), so a start that rolls back
+// serves no request; serving that stops with an error stops the application.
+// OnDrain shuts the server down gracefully, letting requests in flight finish
+// with their scopes, and OnStop closes it. A server with a TLSConfig is served
+// with ServeTLS, from the certificates there.
+func Serve(b di.Binding[*http.Server]) di.Binding[*http.Server] {
+	s := b.Scope()
+	// An Eager binding is never Scoped, so it builds one server and this is
+	// its listener, handed from OnStart to the worker the start step launches.
+	var ln net.Listener
+	return b.Eager().
+		OnStart(func(ctx context.Context, srv *http.Server) (err error) {
+			addr := srv.Addr
+			if addr == "" {
+				addr = ":http"
+				if srv.TLSConfig != nil {
+					addr = ":https"
+				}
+			}
+			var lc net.ListenConfig
+			if ln, err = lc.Listen(ctx, "tcp", addr); err != nil {
+				return err
+			}
+			if host, port, err := net.SplitHostPort(addr); err == nil && port == "0" {
+				_, port, _ = net.SplitHostPort(ln.Addr().String())
+				srv.Addr = net.JoinHostPort(host, port)
+			}
+			return nil
+		}).
+		Go(func(ctx context.Context, srv *http.Server) error {
+			// Serve closes the listener, but ServeTLS can fail before
+			// reaching it, and nothing else would.
+			defer func() { _ = ln.Close() }()
+			select {
+			case <-s.Ready():
+			case <-ctx.Done():
+				return nil // the start failed and rolled back
+			}
+			var err error
+			if srv.TLSConfig != nil {
+				err = srv.ServeTLS(ln, "", "")
+			} else {
+				err = srv.Serve(ln)
+			}
+			if errors.Is(err, http.ErrServerClosed) {
+				return nil
+			}
+			return err
+		}).
+		OnDrain(func(ctx context.Context, srv *http.Server) error { return srv.Shutdown(ctx) }).
+		OnStop(func(_ context.Context, srv *http.Server) error { return srv.Close() })
 }

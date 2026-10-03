@@ -278,7 +278,8 @@ still be starting. `Ready` is closed once the whole `Start` succeeds and
 never if it fails, so a server binds in `OnStart` and serves from its worker
 only after `Ready`, selecting on its context too: a failed start then rolls
 back without a request served. A scope's `Ready` follows the nearest `Start`
-at or above it, as `Context` does.
+at or above it, as `Context` does. `dihttp.Serve` does all of this for an
+`*http.Server`.
 
 #### Run and Shutdown
 
@@ -445,6 +446,12 @@ func NewServer(cfg Config, mw dihttp.Middleware) *http.Server {
     return &http.Server{Addr: cfg.Addr, Handler: mw(mux)}
 }
 ```
+
+`dihttp.Serve(app.Wire[*http.Server](NewServer))` gives that server its
+lifecycle: it is eager, binds in `OnStart` so a busy port fails the start,
+serves once the whole start has succeeded, drains in `OnDrain` and closes in
+`OnStop`. A port of 0 in `Addr` is replaced with the one chosen.
+`examples/server` below writes the same hooks by hand.
 
 `dihttp.Handle` resolves a handler type from the request's scope and calls
 the method; mark the type `Scoped()` when it needs the request.

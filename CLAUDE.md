@@ -653,6 +653,15 @@ reverse: caught by the fuzzer in 0.06s, missed by 400 seeded sequences).
   constructor's status is taken from inside the build error with
   `errors.AsType` so the client never sees the registration site. That rests
   on `grpc.MethodHandler` being the public contract it is documented as.
+- **`dihttp.Serve` takes every hook of the binding it is given**, so a user
+  adds none; it reaches `Ready` through `Binding.Scope`. The listener passes
+  from `OnStart` to the worker in a captured variable, which is sound because
+  an `Eager` binding cannot be `Scoped` and so builds one server. The worker
+  closes the listener whatever happens, since `ServeTLS` can fail before
+  `Serve` takes it. Only a port of 0 in `Addr` is filled in, keeping the host
+  for TLS name checks; `examples/guide`'s start test reads it to make a
+  request. `examples/server` keeps the hooks written out, because teaching
+  them is its job.
 - **`dislog/` is the slog bridge for `Observe`** and imports nothing but
   `log/slog` and the library. `dislog.New` returns the `func(di.Event)` that
   `Observe` takes, not a `slog.Handler`. Failed steps log at Error with the site

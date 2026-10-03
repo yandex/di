@@ -841,3 +841,7 @@ func (b Binding[T]) Go(f func(context.Context, T) error) Binding[T] {
 		b.worker = func(ctx context.Context, v any) error { return f(ctx, as[T](v)) }
 	})
 }
+
+// Scope returns the scope the binding was registered through, for code that
+// adds hooks needing it, such as a worker waiting on Ready.
+func (b Binding[T]) Scope() *Scope { return b.s }

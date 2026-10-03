@@ -454,6 +454,6 @@ resolution, or at `Start` if the service is eager. `Validate` checks what
 | [`run.go`](../run.go) | `Run` and `Shutdown` |
 | [`validate.go`](../validate.go) | the walk over declared dependencies |
 | [`explain.go`](../explain.go) | `Explain`, `Graph` and `Modules` |
-| [`dihttp/`](../dihttp) | the net/http adapter: request scopes and handlers |
+| [`dihttp/`](../dihttp) | the net/http adapter: request scopes, handlers and a served `*http.Server` |
 | [`dislog/`](../dislog) | the slog bridge for `Observe` |
 | [`examples/guide/`](../examples/guide) | one application, walked through at <https://yandex.github.io/di/> |
