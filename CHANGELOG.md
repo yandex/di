@@ -7,13 +7,19 @@ below says plainly whether an upgrade can break a caller.
 
 ## [Unreleased]
 
+## [0.19.1] - 2026-10-03
+
+A fix to `dihttp.Serve`, and the gRPC adapter's own `Serve`. `go doc -all`
+against 0.19.0 is unchanged in `di`, `dihttp` and `dislog`. An upgrade
+cannot break a caller.
+
 ### Added
 
-- `digrpc.Serve(b, listen)` gives a `*grpc.Server` binding its whole
-  lifecycle, as `dihttp.Serve` does for net/http: eager, `listen` called in
-  `OnStart`, served from a worker once `Ready` closes, `GracefulStop` in
-  `OnDrain` bounded by the stop context, `Stop` in `OnStop`.
-  `examples/grpc` uses it. In `digrpc/v0.3.0`, which requires `di` v0.19.0.
+- In `digrpc/v0.3.0`, which requires `di` v0.19.0: `digrpc.Serve(b,
+  listen)` gives a `*grpc.Server` binding its whole lifecycle, as
+  `dihttp.Serve` does for net/http: eager, `listen` called in `OnStart`,
+  served from a worker once `Ready` closes, `GracefulStop` in `OnDrain`
+  bounded by the stop context, `Stop` in `OnStop`. `examples/grpc` uses it.
 
 ### Fixed
 
@@ -1261,7 +1267,8 @@ rollback and deterministic stop order, `Run` hooks for workers, health
 checks, `Run` and `Shutdown` for graceful termination, and observability
 events.
 
-[Unreleased]: https://github.com/yandex/di/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/yandex/di/compare/v0.19.1...HEAD
+[0.19.1]: https://github.com/yandex/di/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/yandex/di/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/yandex/di/compare/v0.17.2...v0.18.0
 [0.17.2]: https://github.com/yandex/di/compare/v0.17.1...v0.17.2
