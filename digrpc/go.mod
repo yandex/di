@@ -9,7 +9,7 @@ go 1.27
 
 require (
 	golang.yandex/di v0.19.0
-	google.golang.org/grpc v1.84.0
+	google.golang.org/grpc v1.80.0
 )
 
 require (

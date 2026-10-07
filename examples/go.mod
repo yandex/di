@@ -10,7 +10,7 @@ require (
 	github.com/charmbracelet/log v1.0.0
 	golang.yandex/di v0.19.0
 	golang.yandex/di/digrpc v0.0.0
-	google.golang.org/grpc v1.84.0
+	google.golang.org/grpc v1.80.0
 )
 
 require (
