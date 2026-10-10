@@ -28,11 +28,11 @@ jobs:
       - name: lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.13.1
+          version: v2.14.0
       - name: lint digrpc
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.13.1
+          version: v2.14.0
           working-directory: digrpc
       - name: digrpc vet and test
         working-directory: digrpc
