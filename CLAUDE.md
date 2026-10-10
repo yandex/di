@@ -662,7 +662,12 @@ reverse: caught by the fuzzer in 0.06s, missed by 400 seeded sequences).
   a scope whose drain phase already ended is cancelled undrained, and `Serve`
   ignores its context.
 - **`dihttp.Serve` takes every hook of the binding it is given**, so a user
-  adds none; it reaches `Ready` through `Binding.Scope`. The listener passes
+  adds none; it reaches `Ready` through `Binding.Scope`. It is generic over
+  the key, `S ~*http.Server`, because a key names one value per scope and a
+  second server needs a type of its own; the hooks convert back, and a
+  constructor returning `*http.Server` serves such a key since `Wire`
+  accepts an assignable result. `digrpc.Serve` is the same over
+  `*grpc.Server`. The listener passes
   from `OnStart` to the worker in a captured variable, which is sound because
   an `Eager` binding cannot be `Scoped` and so builds one server. The worker
   closes the listener whatever happens, since `ServeTLS` can fail before

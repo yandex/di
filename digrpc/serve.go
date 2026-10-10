@@ -29,13 +29,21 @@ import (
 // application. OnDrain stops the server gracefully, letting calls in flight
 // finish with their scopes, and cuts them short if its context expires first;
 // OnStop stops it.
-func Serve(b di.Binding[*grpc.Server], listen func(context.Context) (net.Listener, error)) di.Binding[*grpc.Server] {
+//
+// A key names one value per scope, so a second server in the same scope is
+// registered under a type of its own, one whose underlying type is
+// *grpc.Server. A constructor returning *grpc.Server still serves it:
+//
+//	type AdminServer *grpc.Server
+//
+//	digrpc.Serve(app.Wire[AdminServer](NewAdminServer), listenAdmin)
+func Serve[S ~*grpc.Server](b di.Binding[S], listen func(context.Context) (net.Listener, error)) di.Binding[S] {
 	s := b.Scope()
 	// An Eager binding is never Scoped, so it builds one server and this is
 	// its listener, handed from OnStart to the worker the start step launches.
 	var ln net.Listener
 	return b.Eager().
-		OnStart(func(ctx context.Context, _ *grpc.Server) (err error) {
+		OnStart(func(ctx context.Context, _ S) (err error) {
 			ln, err = listen(ctx)
 			switch {
 			case err != nil && ln != nil:
@@ -45,7 +53,8 @@ func Serve(b di.Binding[*grpc.Server], listen func(context.Context) (net.Listene
 			}
 			return err
 		}).
-		Go(func(ctx context.Context, srv *grpc.Server) error {
+		Go(func(ctx context.Context, served S) error {
+			srv := (*grpc.Server)(served)
 			// Serve closes the listener once it has it; this covers the paths
 			// that never reach it.
 			defer func() { _ = ln.Close() }()
@@ -64,7 +73,8 @@ func Serve(b di.Binding[*grpc.Server], listen func(context.Context) (net.Listene
 			}
 			return nil
 		}).
-		OnDrain(func(ctx context.Context, srv *grpc.Server) error {
+		OnDrain(func(ctx context.Context, served S) error {
+			srv := (*grpc.Server)(served)
 			// GracefulStop takes no context: Stop cuts the remaining calls
 			// short if ctx expires first.
 			stop := context.AfterFunc(ctx, srv.Stop)
@@ -74,5 +84,5 @@ func Serve(b di.Binding[*grpc.Server], listen func(context.Context) (net.Listene
 			}
 			return nil
 		}).
-		OnStop(func(_ context.Context, srv *grpc.Server) error { srv.Stop(); return nil })
+		OnStop(func(_ context.Context, srv S) error { (*grpc.Server)(srv).Stop(); return nil })
 }

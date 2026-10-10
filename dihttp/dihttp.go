@@ -100,13 +100,22 @@ func HandleFunc[H any](method func(H, http.ResponseWriter, *http.Request)) http.
 // OnDrain shuts the server down gracefully, letting requests in flight finish
 // with their scopes, and OnStop closes it. A server with a TLSConfig is served
 // with ServeTLS, from the certificates there.
-func Serve(b di.Binding[*http.Server]) di.Binding[*http.Server] {
+//
+// A key names one value per scope, so a second server in the same scope is
+// registered under a type of its own, one whose underlying type is
+// *http.Server. A constructor returning *http.Server still serves it:
+//
+//	type AdminServer *http.Server
+//
+//	dihttp.Serve(app.Wire[AdminServer](NewAdminServer))
+func Serve[S ~*http.Server](b di.Binding[S]) di.Binding[S] {
 	s := b.Scope()
 	// An Eager binding is never Scoped, so it builds one server and this is
 	// its listener, handed from OnStart to the worker the start step launches.
 	var ln net.Listener
 	return b.Eager().
-		OnStart(func(ctx context.Context, srv *http.Server) (err error) {
+		OnStart(func(ctx context.Context, served S) (err error) {
+			srv := (*http.Server)(served)
 			addr := srv.Addr
 			if addr == "" {
 				addr = ":http"
@@ -124,7 +133,8 @@ func Serve(b di.Binding[*http.Server]) di.Binding[*http.Server] {
 			}
 			return nil
 		}).
-		Go(func(ctx context.Context, srv *http.Server) error {
+		Go(func(ctx context.Context, served S) error {
+			srv := (*http.Server)(served)
 			// Serve closes the listener, but ServeTLS can fail before
 			// reaching it, and nothing else would.
 			defer func() { _ = ln.Close() }()
@@ -147,6 +157,6 @@ func Serve(b di.Binding[*http.Server]) di.Binding[*http.Server] {
 			}
 			return err
 		}).
-		OnDrain(func(ctx context.Context, srv *http.Server) error { return srv.Shutdown(ctx) }).
-		OnStop(func(_ context.Context, srv *http.Server) error { return srv.Close() })
+		OnDrain(func(ctx context.Context, srv S) error { return (*http.Server)(srv).Shutdown(ctx) }).
+		OnStop(func(_ context.Context, srv S) error { return (*http.Server)(srv).Close() })
 }

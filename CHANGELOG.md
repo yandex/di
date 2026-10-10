@@ -7,6 +7,27 @@ below says plainly whether an upgrade can break a caller.
 
 ## [Unreleased]
 
+`dihttp.Serve` and `digrpc.Serve` take a second server. Every call site
+compiles unchanged. **An upgrade can break a caller** that takes either
+`Serve` as a function value without instantiating it.
+
+### Changed
+
+- `dihttp.Serve` is generic over the binding's key, `Serve[S ~*http.Server]`,
+  so a second server in one scope is registered under a type of its own,
+  `type AdminServer *http.Server`, and served by the same call; a
+  constructor returning `*http.Server` still serves it. `digrpc.Serve` is
+  the same over `*grpc.Server`, in `digrpc/v0.4.0`, which requires this
+  release.
+
+### Fixed
+
+- A key that is a named type over a pointer, `type AdminServer *http.Server`,
+  was reported by its underlying type, `*net/http.Server` in package
+  `net/http`, in events, `Explain`, `Graph`, `Modules` and every rejection,
+  so two such servers read as one. It is now named by its own name and
+  package.
+
 ## [0.19.1] - 2026-10-03
 
 A fix to `dihttp.Serve`, and the gRPC adapter's own `Serve`. `go doc -all`

@@ -214,3 +214,39 @@ func TestServeClosesAListenerReturnedWithAnError(t *testing.T) {
 		t.Error("the listener was leaked")
 	}
 }
+
+// adminServer is a second key for a *grpc.Server in the same scope.
+type adminServer *grpc.Server
+
+// A second server in one scope is registered under a type of its own and
+// served by the same Serve; both serve from the one Start and stop with it.
+func TestServeASecondKey(t *testing.T) {
+	app := di.New()
+	users, admins := bufconn.Listen(1<<20), bufconn.Listen(1<<20)
+	uc, ac := &checker{}, &checker{}
+	served(app, users, uc)
+	digrpc.Serve(app.Wire[adminServer](func() *grpc.Server {
+		srv := grpc.NewServer()
+		grpc_health_v1.RegisterHealthServer(srv, ac)
+		return srv
+	}), func(context.Context) (net.Listener, error) { return admins, nil })
+	if err := app.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []grpc_health_v1.HealthClient{client(t, users), client(t, admins)} {
+		if _, err := c.Check(t.Context(), &grpc_health_v1.HealthCheckRequest{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if uc.calls.Load() != 1 || ac.calls.Load() != 1 {
+		t.Errorf("calls: user %d, admin %d, want one each", uc.calls.Load(), ac.calls.Load())
+	}
+	if err := app.Stop(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	for name, lis := range map[string]*bufconn.Listener{"user": users, "admin": admins} {
+		if !closed(t, lis) {
+			t.Errorf("the %s listener still accepts after Stop", name)
+		}
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -243,5 +244,53 @@ func TestServeImpatientStopStillStops(t *testing.T) {
 			t.Fatal("the server is still accepting")
 		}
 		time.Sleep(time.Millisecond)
+	}
+}
+
+// adminServer is a second key for an *http.Server in the same scope.
+type adminServer *http.Server
+
+// A second server in one scope is registered under a type of its own and
+// served by the same Serve; both serve from the one Start and stop with it.
+func TestServeASecondKey(t *testing.T) {
+	app := di.New()
+	dihttp.Serve(app.Wire[*http.Server](func() *http.Server {
+		return &http.Server{Addr: "127.0.0.1:0", Handler: http.HandlerFunc(hello)}
+	}))
+	dihttp.Serve(app.Wire[adminServer](func() *http.Server {
+		return &http.Server{Addr: "127.0.0.1:0", Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(w, "admin")
+		})}
+	}))
+	if err := app.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	user := app.Get[*http.Server]().Addr
+	admin := (*http.Server)(app.Get[adminServer]()).Addr
+	if user == admin {
+		t.Fatalf("both servers on %s", user)
+	}
+	if got := get(t, http.DefaultClient, "http://"+user); got != "hello" {
+		t.Errorf("user server answered %q", got)
+	}
+	if got := get(t, http.DefaultClient, "http://"+admin); got != "admin" {
+		t.Errorf("admin server answered %q", got)
+	}
+	// The second key is reported under its own name, not as the server it
+	// points at, or two servers would read as one.
+	const name = "golang.yandex/di/dihttp_test.adminServer"
+	if got := app.Explain[adminServer](); !strings.HasPrefix(got, name) {
+		t.Errorf("Explain names the admin server:\n%s\nwant it to start with %s", got, name)
+	}
+	if got := app.Modules(); !strings.Contains(got, "dihttp_test.adminServer") {
+		t.Errorf("Modules lists the admin server:\n%s", got)
+	}
+	if err := app.Stop(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	for _, addr := range []string{user, admin} {
+		if _, err := fetch(http.DefaultClient, "http://"+addr); err == nil {
+			t.Errorf("%s still serves after Stop", addr)
+		}
 	}
 }

@@ -450,8 +450,11 @@ func NewServer(cfg Config, mw dihttp.Middleware) *http.Server {
 `dihttp.Serve(app.Wire[*http.Server](NewServer))` gives that server its
 lifecycle: it is eager, binds in `OnStart` so a busy port fails the start,
 serves once the whole start has succeeded, drains in `OnDrain` and closes in
-`OnStop`. A port of 0 in `Addr` is replaced with the one chosen.
-`examples/server` below writes the same hooks by hand.
+`OnStop`. A port of 0 in `Addr` is replaced with the one chosen. A second
+server in the same scope, an admin port say, is registered under a type of
+its own, `type AdminServer *http.Server`, and served by the same call; its
+constructor still returns `*http.Server`. `examples/server` below writes
+the same hooks by hand.
 
 `dihttp.Handle` resolves a handler type from the request's scope and calls
 the method; mark the type `Scoped()` when it needs the request.
