@@ -7,9 +7,13 @@ below says plainly whether an upgrade can break a caller.
 
 ## [Unreleased]
 
-`dihttp.Serve` and `digrpc.Serve` take a second server. Every call site
-compiles unchanged. **An upgrade can break a caller** that takes either
-`Serve` as a function value without instantiating it.
+## [0.20.0] - 2026-10-10
+
+`dihttp.Serve` and `digrpc.Serve` take a second server. `go doc -all`
+against 0.19.1 is unchanged in `di` and `dislog`; in `dihttp`, `Serve`
+gains a type parameter. Every call site compiles unchanged. **An upgrade
+can break a caller** that takes either `Serve` as a function value without
+instantiating it.
 
 ### Changed
 
@@ -17,8 +21,10 @@ compiles unchanged. **An upgrade can break a caller** that takes either
   so a second server in one scope is registered under a type of its own,
   `type AdminServer *http.Server`, and served by the same call; a
   constructor returning `*http.Server` still serves it. `digrpc.Serve` is
-  the same over `*grpc.Server`, in `digrpc/v0.4.0`, which requires this
+  the same over `*grpc.Server`, in `digrpc/v0.5.0`, which requires this
   release.
+- `digrpc/v0.4.0` (2026-10-07) requires grpc v1.80.0 rather than v1.84.0,
+  so it fits an application that is not on the latest grpc.
 
 ### Fixed
 
@@ -1288,7 +1294,8 @@ rollback and deterministic stop order, `Run` hooks for workers, health
 checks, `Run` and `Shutdown` for graceful termination, and observability
 events.
 
-[Unreleased]: https://github.com/yandex/di/compare/v0.19.1...HEAD
+[Unreleased]: https://github.com/yandex/di/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/yandex/di/compare/v0.19.1...v0.20.0
 [0.19.1]: https://github.com/yandex/di/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/yandex/di/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/yandex/di/compare/v0.17.2...v0.18.0
