@@ -446,7 +446,7 @@ func (m *machine) step(i int, o op) {
 		ctx, cancel := context.WithCancel(machineStartCtx(int(o.scope)))
 		cancel()
 		out := m.call(label, func() (any, error) {
-			return nil, s.Run(ctx, di.StopTimeout(2*time.Second))
+			return nil, s.Run(ctx, di.StartTimeout(2*time.Second), di.StopTimeout(2*time.Second))
 		})
 		if out.rejected == "" {
 			m.lc.ranAndStopped(int(o.scope), out.err)
@@ -810,19 +810,23 @@ func regShape[T any](m *machine, s *di.Scope, o op, plain func() T, dep func(*di
 // group as it stands. The next key rather than its own, since a constructor
 // that resolves its own key is a cycle rather than a miss.
 func askOptional(sc *di.Scope, key uint8) {
-	switch (key + 1) % numKeys {
-	case 0:
-		_, _ = sc.Maybe[*mk1]()
-		_ = sc.All[*mk1]()
-	case 1:
-		_, _ = sc.Maybe[*mk2]()
-		_ = sc.All[*mk2]()
-	case 2:
-		_, _ = sc.Maybe[*mk3]()
-		_ = sc.All[*mk3]()
-	default:
-		_, _ = sc.Maybe[mkI]()
-		_ = sc.All[mkI]()
+	// Twice: a second read of a group by one asker lands on the record the
+	// first one left, which is its own path.
+	for range 2 {
+		switch (key + 1) % numKeys {
+		case 0:
+			_, _ = sc.Maybe[*mk1]()
+			_ = sc.All[*mk1]()
+		case 1:
+			_, _ = sc.Maybe[*mk2]()
+			_ = sc.All[*mk2]()
+		case 2:
+			_, _ = sc.Maybe[*mk3]()
+			_ = sc.All[*mk3]()
+		default:
+			_, _ = sc.Maybe[mkI]()
+			_ = sc.All[mkI]()
+		}
 	}
 }
 
@@ -843,7 +847,7 @@ func (m *machine) register(s *di.Scope, o op) {
 	case 1:
 		regShape(m, s, o,
 			func() *mk2 { return &mk2{} },
-			func(sc *di.Scope) *mk2 { return &mk2{dep: sc.Get[*mk3]()} },
+			func(sc *di.Scope) *mk2 { return &mk2{dep: sc.Must(sc.Resolve[*mk3]())} },
 			func(d *mk3) *mk2 { return &mk2{dep: d} },
 			func(sn scopeName, d *mk3) *mk2 { return reported(m, o, sn, &mk2{dep: d}) },
 			func(opt *mk3, group []*mk3) *mk2 { return reportedHere(m, o, &mk2{dep: opt}) },
@@ -891,11 +895,11 @@ func (m *machine) get(s *di.Scope, o op) (any, error) {
 	case 0:
 		return s.Get[*mk1](), nil
 	case 1:
-		return s.Get[*mk2](), nil
+		return s.Must(s.Resolve[*mk2]()), nil // Must panics as Get does
 	case 2:
 		return s.Get[*mk3](), nil
 	default:
-		return s.Get[mkI](), nil
+		return s.Must(s.Resolve[mkI]()), nil
 	}
 }
 
