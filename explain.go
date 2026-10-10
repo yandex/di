@@ -601,11 +601,11 @@ func moduleLabel(b *binding) string {
 // keeps the full path, since an error must not confuse two packages of one
 // name.
 func shortName(t reflect.Type) string {
-	if t.Kind() == reflect.Pointer {
-		return "*" + shortName(t.Elem())
-	}
 	if t.PkgPath() != "" {
 		return t.PkgPath()[strings.LastIndex(t.PkgPath(), "/")+1:] + "." + t.Name()
+	}
+	if t.Kind() == reflect.Pointer {
+		return "*" + shortName(t.Elem())
 	}
 	return t.String()
 }

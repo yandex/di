@@ -57,7 +57,10 @@ a busy port fails the start; a worker serves once the whole start has
 succeeded (`di.Scope.Ready`), so a start that rolls back serves no call;
 `OnDrain` calls `GracefulStop`, which runs before anything is torn down, so
 calls still in flight keep their scopes; `OnStop` calls `Stop`. A `bufconn`
-listener works the same, which is how its tests run. `examples/grpc` in the
+listener works the same, which is how its tests run. A second server in the
+same scope is registered under a type of its own, `type AdminServer
+*grpc.Server`, and served by the same call; its constructor still returns
+`*grpc.Server`. `examples/grpc` in the
 main repository is that program end to end.
 
 Versioned on its own as `digrpc/vX.Y.Z`, against a released `di`; bumping that

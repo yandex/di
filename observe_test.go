@@ -127,23 +127,31 @@ func TestBuildRacingStopIsUndone(t *testing.T) {
 	}
 }
 
+// dbHandle is a named type whose underlying type is a pointer: a second key
+// for a *DB, as a second server is registered under one.
+type dbHandle *DB
+
 // Event.Package is the import path of the type Service names, which is what
-// lets an observer shorten or group by it without parsing Service. The case
-// worth pinning is the pointer: a pointer type is unnamed, so its own
-// PkgPath is empty and the path has to come from what it points at.
+// lets an observer shorten or group by it without parsing Service. Two cases
+// are worth pinning: a pointer type is unnamed, so its own PkgPath is empty
+// and the path has to come from what it points at; and a named pointer type
+// has a name and a path of its own, which is what tells it from the pointer.
 func TestEventPackage(t *testing.T) {
 	var evs []di.Event
 	s := di.New()
 	s.Observe(func(ev di.Event) { evs = append(evs, ev) })
 	s.Value(&DB{})                  // *di_test.DB, a pointer to a named type
+	s.Value(dbHandle(&DB{}))        // di_test.dbHandle, named itself
 	s.Value(map[string]int{"a": 1}) // unnamed: no path to report
 	s.Get[*DB]()
+	s.Get[dbHandle]()
 	s.Get[map[string]int]()
 	s.Shutdown(nil) // names no service, so no package either
 
 	const pkg = "golang.yandex/di_test"
 	want := map[string]string{
 		"*" + pkg + ".DB": pkg,
+		pkg + ".dbHandle": pkg,
 		"map[string]int":  "",
 		"":                "",
 	}

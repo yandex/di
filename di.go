@@ -124,22 +124,25 @@ type key struct{ t reflect.Type }
 func (k key) String() string { return typeName(k.t) }
 
 // pkgPath is the import path of the named type k stands for, walking through
-// pointers as typeName does, since a pointer type is unnamed. It is empty for
-// exactly the types typeName writes with reflect's own short spelling.
+// unnamed pointers as typeName does. It is empty for exactly the types
+// typeName writes with reflect's own short spelling.
 func (k key) pkgPath() string {
 	t := k.t
-	for t.Kind() == reflect.Pointer {
+	for t.PkgPath() == "" && t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	return t.PkgPath()
 }
 
+// typeName spells a key: a named type by its import path, which a named
+// pointer type (type AdminServer *http.Server) has too, an unnamed pointer by
+// what it points at, anything else as reflect does.
 func typeName(t reflect.Type) string {
-	if t.Kind() == reflect.Pointer {
-		return "*" + typeName(t.Elem())
-	}
 	if t.PkgPath() != "" {
 		return t.PkgPath() + "." + t.Name()
+	}
+	if t.Kind() == reflect.Pointer {
+		return "*" + typeName(t.Elem())
 	}
 	return t.String()
 }

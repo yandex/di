@@ -662,7 +662,12 @@ reverse: caught by the fuzzer in 0.06s, missed by 400 seeded sequences).
   a scope whose drain phase already ended is cancelled undrained, and `Serve`
   ignores its context.
 - **`dihttp.Serve` takes every hook of the binding it is given**, so a user
-  adds none; it reaches `Ready` through `Binding.Scope`. The listener passes
+  adds none; it reaches `Ready` through `Binding.Scope`. It is generic over
+  the key, `S ~*http.Server`, because a key names one value per scope and a
+  second server needs a type of its own; the hooks convert back, and a
+  constructor returning `*http.Server` serves such a key since `Wire`
+  accepts an assignable result. `digrpc.Serve` is the same over
+  `*grpc.Server`. The listener passes
   from `OnStart` to the worker in a captured variable, which is sound because
   an `Eager` binding cannot be `Scoped` and so builds one server. The worker
   closes the listener whatever happens, since `ServeTLS` can fail before
@@ -732,14 +737,21 @@ reverse: caught by the fuzzer in 0.06s, missed by 400 seeded sequences).
 - Generic methods need gopls **v0.23.0+**. v0.21.1 rejects the code with
   `method must have no type parameters`, then reports cascading phantom errors.
   golangci-lint v2.13.1+ handles them.
+- **CI pins golangci-lint v2.14.0**, and a Go patch release can outrun the
+  pin: `setup-go` resolves `go.mod`'s `1.27` to the newest patch, and Go
+  1.27.2 writes export data v2.13.1 cannot read (`export data version 5 is
+  greater than maximum supported version 4`, on every import, as a typecheck
+  failure). When the lint step fails on imports of the standard library,
+  bump the pin, not the code. Run the same version locally.
 - `.golangci.yml` excludes staticcheck QF1011: `var get func() *DB = s.Get` is
   not redundant — the declared type drives Go 1.27 inference for a generic method
   value.
-- It also disables SA4023, because golangci-lint v2.13.1's staticcheck *crashes*
-  on this package (`index out of range [1] with length 1`, in its nilness
-  analysis), taking the whole lint job down with no partial result. The trigger
-  moves as the test package grows. Drop the exclusion once upstream is fixed and
-  see what SA4023 has to say.
+- SA4023 was excluded up to v2.13.1 because its staticcheck (honnef.co/go/tools
+  v0.8.0) *crashed* on this package (`index out of range [1] with length 1`,
+  in its nilness analysis), taking the whole lint job down with no partial
+  result, at a trigger that moved as the test package grew. v2.14.0 ships
+  v0.8.1, which runs it clean, so the exclusion is gone; if the crash comes
+  back, exclude it again rather than contorting the code.
 - Bisecting a lint crash needs care: reverting one file can break the build, and
   golangci-lint then reports "0 issues" for a package it never analysed. Check
   the package still compiles at each step.
