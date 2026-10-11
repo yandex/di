@@ -620,11 +620,15 @@ reverse: caught by the fuzzer in 0.06s, missed by 400 seeded sequences).
 
 - **README code blocks are generated** from `examples/` with embedmd markers.
   `gofmt -w` the example *before* re-embedding, or CI fails the sync check.
-- **Coverage is published with the site, not to a service.** `pages.yml` writes
-  `go tool cover -html` and a shields endpoint JSON into `site/build` before
-  uploading, so the report and its badge are one deploy. It covers `di`, `dihttp`
-  and `dislog`. That is why the site workflow's path filter includes `**/*.go` —
-  narrowing it back to `site/` would freeze the badge with nothing failing.
+- **The coverage badge states a floor; the report is published with the site.**
+  `ci.yml` fails the `test` job when `go test -race ./...` covers less than
+  98% of statements, and the README badge is a static shield saying so,
+  linking to the `go tool cover -html` report `pages.yml` writes into
+  `site/build`. The report covers `di`, `dihttp` and `dislog`, and moves a
+  little with every run, which is why the badge is not a measurement. The
+  site workflow's path filter includes `**/*.go` so the report follows the
+  code; narrowing it back to `site/` would freeze it with nothing failing.
+  What stays uncovered is listed under "Tooling caveats".
 - **`examples/` and `benchmarks/` are separate modules** with `replace ../`, so
   the root module keeps zero requires. A root `go test ./...` does not cover the
   examples and `golangci-lint run ./...` does not lint them; CI runs them in
@@ -752,6 +756,19 @@ reverse: caught by the fuzzer in 0.06s, missed by 400 seeded sequences).
   result, at a trigger that moved as the test package grew. v2.14.0 ships
   v0.8.1, which runs it clean, so the exclusion is gone; if the crash comes
   back, exclude it again rather than contorting the code.
+- **What no test covers, and why the floor is 98 and not 100.** A dozen
+  statement blocks are race windows or defensive defaults: `drainIfNeeded`
+  waiting out another Stop's drain and the deadline on that wait, `visit`
+  timing out on a scope another Stop owns, `stopContext`'s fallback when
+  nothing recorded a Stop, `hold`'s contended branches and the `nil, false`
+  they make `resolve` return, `freeze`'s "it has already been resolved"
+  (which needs a resolution held across a parallel first use), `readGroup`
+  with no instance to record on, `phaseWord`'s "failed" without an error and
+  its "unknown" arm, and `moduleName` of a function reflect cannot name. The
+  concurrent tests reach some of them on some runs, which is the whole of
+  the badge's movement. Everything else is covered by a test that names its
+  branch: `edges_test.go` and `edges_internal_test.go` hold the ones the
+  rest of the suite reached by luck or not at all.
 - Bisecting a lint crash needs care: reverting one file can break the build, and
   golangci-lint then reports "0 issues" for a package it never analysed. Check
   the package still compiles at each step.

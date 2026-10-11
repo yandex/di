@@ -53,6 +53,16 @@ jobs:
           go run ./reload
       - name: test
         run: go test -race -count=1 -coverprofile=coverage.out ./...
+      # The README badge states this floor rather than a measurement, since
+      # the concurrent tests reach a slightly different set of lines on every
+      # run; what is left uncovered is a handful of race windows and
+      # defensive defaults, listed under "Tooling caveats" in CLAUDE.md.
+      - name: coverage floor
+        run: |
+          pct=$(go tool cover -func=coverage.out | tail -1 | awk '{print $NF}')
+          echo "coverage $pct"
+          awk -v n="${pct%\%}" 'BEGIN { exit !(n >= 98) }' \
+            || { echo "::error::coverage $pct is below the floor of 98% the README badge states"; exit 1; }
       - name: what only the hand-written tests reach
         run: |
           go test -count=1 -run 'TestMachine|TestConcurrent|TestProperty|FuzzMachine' -coverprofile=generators.out .
