@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/yandex/di/actions/workflows/ci.yml/badge.svg)](https://github.com/yandex/di/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/golang.yandex/di.svg)](https://pkg.go.dev/golang.yandex/di)
-[![coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fyandex.github.io%2Fdi%2Fcoverage.json)](https://yandex.github.io/di/coverage.html)
+[![coverage](https://img.shields.io/badge/coverage-%E2%89%A5%2098%25-brightgreen)](https://yandex.github.io/di/coverage.html)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Awesome Go](https://raw.githubusercontent.com/floatdrop/awesome-go/main/badges/yandex--di.svg)](https://floatdrop.github.io/awesome-go/#yandex--di)
 

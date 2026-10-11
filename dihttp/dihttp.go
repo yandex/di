@@ -10,6 +10,7 @@
 package dihttp
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"net"
@@ -116,13 +117,7 @@ func Serve[S ~*http.Server](b di.Binding[S]) di.Binding[S] {
 	return b.Eager().
 		OnStart(func(ctx context.Context, served S) (err error) {
 			srv := (*http.Server)(served)
-			addr := srv.Addr
-			if addr == "" {
-				addr = ":http"
-				if srv.TLSConfig != nil {
-					addr = ":https"
-				}
-			}
+			addr := listenAddr(srv)
 			var lc net.ListenConfig
 			if ln, err = lc.Listen(ctx, "tcp", addr); err != nil {
 				return err
@@ -159,4 +154,14 @@ func Serve[S ~*http.Server](b di.Binding[S]) di.Binding[S] {
 		}).
 		OnDrain(func(ctx context.Context, srv S) error { return (*http.Server)(srv).Shutdown(ctx) }).
 		OnStop(func(_ context.Context, srv S) error { return (*http.Server)(srv).Close() })
+}
+
+// listenAddr is the address Serve binds: Addr, or the scheme's port as
+// ListenAndServe would choose it.
+func listenAddr(srv *http.Server) string {
+	def := ":http"
+	if srv.TLSConfig != nil {
+		def = ":https"
+	}
+	return cmp.Or(srv.Addr, def)
 }

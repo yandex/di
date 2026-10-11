@@ -149,12 +149,13 @@ third-party is on the path to rendering the page, so `src/styles/main.css`
 overrides the font stack instead; there is a comment there saying how to get
 Inter back.
 
-`site/build` is not only the site. `pages.yml` writes `coverage.html` and
-`coverage.json` into it after `npm run build` and before the artifact is
-uploaded, so the coverage report is served by the same deploy as the pages
-that link to it. Two consequences: a local `npm run build` gives a tree
-without them, and the report is the one thing on this site no local build
-reproduces; and the workflow's path filter has `**/*.go` in it, so a change to
-Go code deploys the site. Narrow that filter back to `site/` and the badge in
-the root README goes on reading a figure from whenever the site last changed,
-with nothing failing to say so.
+`site/build` is not only the site. `pages.yml` writes `coverage.html` into it
+after `npm run build` and before the artifact is uploaded, so the coverage
+report is served by the same deploy as the pages that link to it. Two
+consequences: a local `npm run build` gives a tree without it, and the report
+is the one thing on this site no local build reproduces; and the workflow's
+path filter has `**/*.go` in it, so a change to Go code deploys the site.
+Narrow that filter back to `site/` and the report goes on showing whenever the
+site last changed, with nothing failing to say so. The coverage badge in the
+root README does not read from the site: it states the floor `ci.yml`
+enforces.

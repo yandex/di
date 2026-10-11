@@ -30,7 +30,7 @@ func wrapBy(s *Scope, inner *binding, at *state) (msg string) {
 // hand to put the Override between them. (#52)
 func TestWrapLosingARaceToAnOverrideIsRejected(t *testing.T) {
 	k := key{t: reflect.TypeFor[*graph]()}
-	for _, shape := range []string{"registration", "wrapper chain", "own scope"} {
+	for _, shape := range []string{"registration", "wrapper chain", "own scope", "wrapped override"} {
 		t.Run(shape, func(t *testing.T) {
 			root := New()
 			root.Provide(func(*Scope) *graph { return &graph{} })
@@ -43,6 +43,10 @@ func TestWrapLosingARaceToAnOverrideIsRejected(t *testing.T) {
 			}
 			inner, at := root.st.lookup(k) // Wrap's lookup
 			override := root.Provide(func(*Scope) *graph { return &graph{} }).Override()
+			if shape == "wrapped override" {
+				// The rejection names the override, not the wrapper over it.
+				root.Wrap[*graph](func(g *graph) *graph { return g })
+			}
 			if shape != "own scope" {
 				root.st.freeze() // committed before the mark
 			}
