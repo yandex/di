@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -240,6 +241,12 @@ func TestServeASecondKey(t *testing.T) {
 	}
 	if uc.calls.Load() != 1 || ac.calls.Load() != 1 {
 		t.Errorf("calls: user %d, admin %d, want one each", uc.calls.Load(), ac.calls.Load())
+	}
+	// The second key is reported under its own name, not as the server it
+	// points at, or two servers would read as one.
+	const name = "golang.yandex/di/digrpc_test.adminServer"
+	if got := app.Explain[adminServer](); !strings.HasPrefix(got, name) {
+		t.Errorf("Explain names the admin server:\n%s\nwant it to start with %s", got, name)
 	}
 	if err := app.Stop(t.Context()); err != nil {
 		t.Fatal(err)
