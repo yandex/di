@@ -419,7 +419,10 @@ func TestReview2LateDrainIsNotReleasedUnderneath(t *testing.T) {
 	close(releaseB)
 	for _, ch := range []chan error{kidStop, rootStop} {
 		select {
-		case <-ch:
+		case err := <-ch:
+			if err != nil {
+				t.Fatal(err)
+			}
 		case <-time.After(5 * time.Second):
 			t.Fatal("Stop never returned")
 		}
@@ -628,7 +631,12 @@ func TestReview6ServiceStartedDuringDrainIsDrained(t *testing.T) {
 		t.Fatal(err)
 	}
 	select {
-	case <-startErr:
+	case err := <-startErr:
+		// Stop may have stopped the scope before Start's last look at it. Only
+		// the bare sentinel: errors.Is would accept a failure joined to it.
+		if err != nil && errors.Unwrap(err) != di.ErrStopped {
+			t.Errorf("Start: %v", err)
+		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Start never returned")
 	}

@@ -741,7 +741,7 @@ reverse: caught by the fuzzer in 0.06s, missed by 400 seeded sequences).
 - Generic methods need gopls **v0.23.0+**. v0.21.1 rejects the code with
   `method must have no type parameters`, then reports cascading phantom errors.
   golangci-lint v2.13.1+ handles them.
-- **CI pins golangci-lint v2.14.0**, and a Go patch release can outrun the
+- **CI pins golangci-lint v2.15.0**, and a Go patch release can outrun the
   pin: `setup-go` resolves `go.mod`'s `1.27` to the newest patch, and Go
   1.27.2 writes export data v2.13.1 cannot read (`export data version 5 is
   greater than maximum supported version 4`, on every import, as a typecheck
