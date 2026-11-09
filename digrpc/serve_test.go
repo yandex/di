@@ -244,9 +244,12 @@ func TestServeASecondKey(t *testing.T) {
 	}
 	// The second key is reported under its own name, not as the server it
 	// points at, or two servers would read as one.
-	const name = "golang.yandex/di/digrpc_test.adminServer"
-	if got := app.Explain[adminServer](); !strings.HasPrefix(got, name) {
-		t.Errorf("Explain names the admin server:\n%s\nwant it to start with %s", got, name)
+	const want = "golang.yandex/di/digrpc_test.adminServer"
+	if got := app.Explain[adminServer](); !strings.HasPrefix(got, want) {
+		t.Errorf("Explain names the admin server:\n%s\nwant it to start with %s", got, want)
+	}
+	if got := app.Modules(); !strings.Contains(got, "digrpc_test.adminServer") {
+		t.Errorf("Modules lists the admin server:\n%s", got)
 	}
 	if err := app.Stop(t.Context()); err != nil {
 		t.Fatal(err)
