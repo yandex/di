@@ -39,8 +39,8 @@ jobs:
         run: |
           go vet ./...
           go test -race -count=1 ./...
-      - name: README examples are in sync
-        run: go run github.com/campoy/embedmd@v1.0.0 -d README.md
+      - name: Documentation examples are in sync
+        run: go run github.com/campoy/embedmd@v1.0.0 -d README.md docs/GUIDE.md
       - name: examples vet, test and run
         working-directory: examples
         run: |

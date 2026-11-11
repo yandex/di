@@ -1,7 +1,7 @@
 # How `di` works
 
 What happens between `s.Get[T]()` and a `T`, drawn out. The
-[README](../README.md) has the API; this is the machinery under it, and why
+[API guide](GUIDE.md) covers usage; this is the machinery under it, and why
 shutdown, scopes and cycles behave as they do.
 
 ## Registrations and instances are different things

@@ -44,8 +44,8 @@ go test -count=1 -run TestMachineSeeded .     # the seeded operation sweep
 go test -run '^$' -fuzz FuzzMachine -fuzztime 2m . # coverage-guided fuzzing
 go vet ./... && golangci-lint run ./...       # lint (config in .golangci.yml)
 test -z "$(gofmt -l .)"                       # formatting gate
-go run github.com/campoy/embedmd@v1.0.0 -d README.md   # README in sync?
-go run github.com/campoy/embedmd@v1.0.0 -w README.md   # re-embed after editing examples/
+go run github.com/campoy/embedmd@v1.0.0 -d README.md docs/GUIDE.md   # docs in sync?
+go run github.com/campoy/embedmd@v1.0.0 -w README.md docs/GUIDE.md   # re-embed examples/
 go run scripts/og.go                          # redraw the social card after a logo change
 cd benchmarks && go test -bench . -benchmem   # separate module
 cd examples && go test ./...                  # separate module
@@ -63,7 +63,7 @@ The full gate, as one chain, the way CI runs it — run this before committing:
 ```sh
 test -z "$(gofmt -l .)" && go vet ./... && go test -race -count=1 ./... \
   && golangci-lint run ./... \
-  && go run github.com/campoy/embedmd@v1.0.0 -d README.md
+  && go run github.com/campoy/embedmd@v1.0.0 -d README.md docs/GUIDE.md
 ```
 
 ## Architecture
@@ -618,8 +618,9 @@ reverse: caught by the fuzzer in 0.06s, missed by 400 seeded sequences).
 
 ## Repo conventions
 
-- **README code blocks are generated** from `examples/` with embedmd markers.
-  `gofmt -w` the example *before* re-embedding, or CI fails the sync check.
+- **Examples in `README.md` and `docs/GUIDE.md` are generated** from `examples/`
+  with embedmd markers. `gofmt -w` the example *before* re-embedding both files,
+  or CI fails the sync check.
 - **The coverage badge states a floor; the report is published with the site.**
   `ci.yml` fails the `test` job when `go test -race ./...` covers less than
   98% of statements, and the README badge is a static shield saying so,
