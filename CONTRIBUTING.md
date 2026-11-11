@@ -29,6 +29,39 @@ Replace the bracketed text as follows:
 
 It is enough to provide us such notification once. 
 
+## Development
+
+Run the full gate before submitting:
+
+```sh
+test -z "$(gofmt -l .)" && go vet ./... && go test -race -count=1 ./... \
+  && golangci-lint run ./... \
+  && go run github.com/campoy/embedmd@v1.0.0 -d README.md docs/GUIDE.md
+```
+
+Tests include regressions, randomized registration and operation sequences,
+lifecycle models, concurrent race checks, and fuzz targets. For changes to
+resolution or teardown, also run:
+
+```sh
+go test -race -run '^$' -fuzz 'FuzzMachine$' -fuzztime 2m .
+go test -race -run '^$' -fuzz FuzzMachineConcurrent -fuzztime 2m .
+```
+
+Examples are a separate module:
+
+```sh
+cd examples && go test -race -count=1 ./...
+```
+
+Examples in `README.md` and `docs/GUIDE.md` are embedded from `examples/` with
+[embedmd](https://github.com/campoy/embedmd). After editing an example, run
+from the repository root:
+
+```sh
+gofmt -w examples/ && go run github.com/campoy/embedmd@v1.0.0 -w README.md docs/GUIDE.md
+```
+
 ## Other questions
 
 If you have any questions, please mail us at opensource-support@yandex-team.ru.

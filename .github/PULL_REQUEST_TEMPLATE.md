@@ -24,8 +24,8 @@
 - [ ] A behaviour change has a test. A bug fix has a regression test that
       **fails against the commit before the fix**; say which commit, and tag the
       test the way its neighbours are tagged.
-- [ ] Edited `examples/`? Ran `gofmt -w examples/` and re-embedded the README,
-      or the sync check fails.
+- [ ] Edited `examples/`? Ran `gofmt -w examples/` and re-embedded `README.md`
+      and `docs/GUIDE.md`, or the sync check fails.
 - [ ] Edited the library or its tests? The coverage badge and the guide site
       are built from them, so check `site/` still builds if you touched
       `examples/guide/`.
@@ -33,7 +33,7 @@
 ```sh
 test -z "$(gofmt -l .)" && go vet ./... && go test -race -count=1 ./... \
   && golangci-lint run ./... \
-  && go run github.com/campoy/embedmd@v1.0.0 -d README.md
+  && go run github.com/campoy/embedmd@v1.0.0 -d README.md docs/GUIDE.md
 ```
 
 <!-- Generative suites are worth a run on anything touching resolution or
